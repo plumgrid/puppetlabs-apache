@@ -1,6 +1,6 @@
 require 'spec_helper_acceptance'
 
-describe 'apache class', :unless => UNSUPPORTED_PLATFORMS.include?(fact('osfamily')) do
+describe 'apache class' do
   case fact('osfamily')
   when 'RedHat'
     package_name = 'httpd'
@@ -45,7 +45,7 @@ describe 'apache class', :unless => UNSUPPORTED_PLATFORMS.include?(fact('osfamil
     # Using puppet_apply as a helper
     it 'should work with no errors' do
       pp = <<-EOS
-      if $::osfamily == 'RedHat' and $::selinux {
+      if $::osfamily == 'RedHat' and "$::selinux" == "true" {
         $semanage_package = $::operatingsystemmajrelease ? {
           '5'     => 'policycoreutils',
           default => 'policycoreutils-python',

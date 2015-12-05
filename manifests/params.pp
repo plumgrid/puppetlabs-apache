@@ -29,6 +29,24 @@ class apache::params inherits ::apache::version {
   $log_level = 'warn'
   $use_optional_includes = false
 
+  # Default mime types settings
+  $mime_types_additional = {
+    'AddHandler' => {
+      'type-map' => 'var'
+      },
+    'AddType'    => {
+      'text/html' => '.shtml'
+      },
+    'AddOutputFilter' => {
+      'INCLUDES'      => '.shtml'
+      },
+  }
+
+  # should we use systemd module?
+  $use_systemd = true
+
+  $vhost_include_pattern = '*'
+
   if $::operatingsystem == 'Ubuntu' and $::lsbdistrelease == '10.04' {
     $verify_command = '/usr/sbin/apache2ctl -t'
   } else {
@@ -50,6 +68,7 @@ class apache::params inherits ::apache::version {
     $vhost_enable_dir     = undef
     $conf_file            = 'httpd.conf'
     $ports_file           = "${conf_dir}/ports.conf"
+    $pidfile              = 'run/httpd.pid'
     $logroot              = '/var/log/httpd'
     $logroot_mode         = undef
     $lib_path             = 'modules'
@@ -71,6 +90,7 @@ class apache::params inherits ::apache::version {
     $mod_packages         = {
       'auth_cas'    => 'mod_auth_cas',
       'auth_kerb'   => 'mod_auth_kerb',
+      'auth_mellon' => 'mod_auth_mellon',
       'authnz_ldap' => $::apache::version::distrelease ? {
         '7'     => 'mod_ldap',
         default => 'mod_authz_ldap',
@@ -127,6 +147,9 @@ class apache::params inherits ::apache::version {
       $wsgi_socket_prefix = undef
     }
     $cas_cookie_path      = '/var/cache/mod_auth_cas/'
+    $mellon_lock_file     = '/run/mod_auth_mellon/lock'
+    $mellon_cache_size    = 100
+    $mellon_post_directory = undef
     $modsec_crs_package   = 'mod_security_crs'
     $modsec_crs_path      = '/usr/lib/modsecurity.d'
     $modsec_dir           = '/etc/httpd/modsecurity.d'
@@ -170,6 +193,7 @@ class apache::params inherits ::apache::version {
     $vhost_enable_dir    = "${httpd_dir}/sites-enabled"
     $conf_file           = 'apache2.conf'
     $ports_file          = "${conf_dir}/ports.conf"
+    $pidfile             = "\${APACHE_PID_FILE}"
     $logroot             = '/var/log/apache2'
     $logroot_mode        = undef
     $lib_path            = '/usr/lib/apache2/modules'
@@ -183,6 +207,7 @@ class apache::params inherits ::apache::version {
     $mod_packages        = {
       'auth_cas'    => 'libapache2-mod-auth-cas',
       'auth_kerb'   => 'libapache2-mod-auth-kerb',
+      'auth_mellon' => 'libapache2-mod-auth-mellon',
       'dav_svn'     => 'libapache2-svn',
       'fastcgi'     => 'libapache2-mod-fastcgi',
       'fcgid'       => 'libapache2-mod-fcgid',
@@ -211,8 +236,15 @@ class apache::params inherits ::apache::version {
     $fastcgi_lib_path       = '/var/lib/apache2/fastcgi'
     $mime_support_package = 'mime-support'
     $mime_types_config    = '/etc/mime.types'
-    $docroot              = '/var/www'
+    if ($::operatingsystem == 'Ubuntu' and versioncmp($::operatingsystemrelease, '13.10') >= 0) or ($::operatingsystem == 'Debian' and versioncmp($::operatingsystemrelease, '8') >= 0) {
+      $docroot              = '/var/www/html'
+    } else {
+      $docroot              = '/var/www'
+    }
     $cas_cookie_path      = '/var/cache/apache2/mod_auth_cas/'
+    $mellon_lock_file     = undef
+    $mellon_cache_size    = undef
+    $mellon_post_directory = '/var/cache/apache2/mod_auth_mellon/'
     $modsec_crs_package   = 'modsecurity-crs'
     $modsec_crs_path      = '/usr/share/modsecurity-crs'
     $modsec_dir           = '/etc/modsecurity'
@@ -316,6 +348,7 @@ class apache::params inherits ::apache::version {
     $vhost_enable_dir = undef
     $conf_file        = 'httpd.conf'
     $ports_file       = "${conf_dir}/ports.conf"
+    $pidfile          = '/var/run/httpd.pid'
     $logroot          = '/var/log/apache24'
     $logroot_mode     = undef
     $lib_path         = '/usr/local/libexec/apache24'
@@ -443,6 +476,7 @@ class apache::params inherits ::apache::version {
     $vhost_enable_dir    = "${httpd_dir}/sites-enabled"
     $conf_file           = 'httpd.conf'
     $ports_file          = "${conf_dir}/ports.conf"
+    $pidfile             = '/var/run/httpd2.pid'
     $logroot             = '/var/log/apache2'
     $logroot_mode        = undef
     $lib_path            = '/usr/lib64/apache2-prefork/'
@@ -472,6 +506,9 @@ class apache::params inherits ::apache::version {
     $mime_types_config    = '/etc/mime.types'
     $docroot              = '/srv/www'
     $cas_cookie_path      = '/var/cache/apache2/mod_auth_cas/'
+    $mellon_lock_file     = undef
+    $mellon_cache_size    = undef
+    $mellon_post_directory = undef
     $alias_icons_path     = '/usr/share/apache2/icons'
     $error_documents_path = '/usr/share/apache2/error'
     $dev_packages        = ['libapr-util1-devel', 'libapr1-devel']

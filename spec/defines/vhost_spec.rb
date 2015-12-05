@@ -154,7 +154,10 @@ describe 'apache::vhost', :type => :define do
           'ssl_verify_depth'            => '3',
           'ssl_options'                 => '+ExportCertData',
           'ssl_openssl_conf_cmd'        => 'DHParameters "foo.pem"',
+          'ssl_proxy_check_peer_cn'     => 'on',
+          'ssl_proxy_check_peer_name'   => 'on',
           'ssl_proxyengine'             => true,
+
           'priority'                    => '30',
           'default_vhost'               => true,
           'servername'                  => 'example.com',
@@ -190,6 +193,9 @@ describe 'apache::vhost', :type => :define do
               'index_options'     => ['FancyIndexing'],
               'index_style_sheet' => '/styles/style.css',
             },
+            { 'path'              => '/var/www/files/output_filtered',
+              'set_output_filter' => 'output_filter',
+            },
           ],
           'error_log'                   => false,
           'error_log_file'              => 'httpd_error_log',
@@ -210,10 +216,14 @@ describe 'apache::vhost', :type => :define do
           'proxy_dest'                  => '/',
           'proxy_pass'                  => [
             {
-              'path'     => '/a',
-              'url'      => 'http://backend-a/',
-              'keywords' => ['noquery', 'interpolate'],
-              'params'   => {
+              'path'            => '/a',
+              'url'             => 'http://backend-a/',
+              'keywords'        => ['noquery', 'interpolate'],
+              'reverse_cookies' => [{
+                'path'          => '/a',
+                'url'           => 'http://backend-a/',
+              }],
+              'params'          => {
                       'retry'   => '0',
                       'timeout' => '5'
               },
@@ -248,6 +258,7 @@ describe 'apache::vhost', :type => :define do
           'redirectmatch_regexp'        => ['\.git$'],
           'redirectmatch_dest'          => ['http://www.example.com'],
           'rack_base_uris'              => ['/rackapp1'],
+          'passenger_base_uris'         => ['/passengerapp1'],
           'headers'                     => 'Set X-Robots-Tag "noindex, noarchive, nosnippet"',
           'request_headers'             => ['append MirrorID "mirror 12"'],
           'rewrites'                    => [
@@ -309,6 +320,14 @@ describe 'apache::vhost', :type => :define do
           'passenger_start_timeout'     => '600',
           'passenger_pre_start'         => 'http://localhost/myapp',
           'add_default_charset'         => 'UTF-8',
+          'auth_kerb'                   => true,
+          'krb_method_negotiate'        => 'off',
+          'krb_method_k5passwd'         => 'off',
+          'krb_authoritative'           => 'off',
+          'krb_auth_realms'             => ['EXAMPLE.ORG','EXAMPLE.NET'],
+          'krb_5keytab'                 => '/tmp/keytab5',
+          'krb_local_user_mapping'      => 'off',
+          'limit_request_field_size'    => '54321',
         }
       end
       let :facts do
@@ -386,6 +405,8 @@ describe 'apache::vhost', :type => :define do
         :content => /^\s+IndexStyleSheet\s'\/styles\/style\.css'$/ ) }
       it { is_expected.to contain_concat__fragment('rspec.example.com-directories').with(
         :content => /^\s+DirectoryIndex\sdisabled$/ ) }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-directories').with(
+        :content => /^\s+SetOutputFilter\soutput_filter$/ ) }
       it { is_expected.to contain_concat__fragment('rspec.example.com-additional_includes') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-logging') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-serversignature') }
@@ -403,6 +424,8 @@ describe 'apache::vhost', :type => :define do
               /SetEnv proxy-nokeepalive 1/) }
       it { is_expected.to contain_concat__fragment('rspec.example.com-proxy').with_content(
               /noquery interpolate/) }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-proxy').with_content(
+              /ProxyPassReverseCookiePath\s+\/a\s+http:\/\//) }
       it { is_expected.to contain_concat__fragment('rspec.example.com-rack') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-redirect') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-rewrite') }
@@ -412,6 +435,13 @@ describe 'apache::vhost', :type => :define do
       it { is_expected.to contain_concat__fragment('rspec.example.com-ssl') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-ssl').with(
         :content => /^\s+SSLOpenSSLConfCmd\s+DHParameters "foo.pem"$/ ) }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-sslproxy') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-sslproxy').with(
+        :content => /^\s+SSLProxyEngine On$/ ) }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-sslproxy').with(
+        :content => /^\s+SSLProxyCheckPeerCN\s+on$/ ) }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-sslproxy').with(
+        :content => /^\s+SSLProxyCheckPeerName\s+on$/ ) }
       it { is_expected.to contain_concat__fragment('rspec.example.com-suphp') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-php_admin') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-header') }
@@ -426,7 +456,93 @@ describe 'apache::vhost', :type => :define do
       it { is_expected.to contain_concat__fragment('rspec.example.com-passenger') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-charsets') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-file_footer') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbMethodNegotiate\soff$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbAuthoritative\soff$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbAuthRealms\sEXAMPLE.ORG\sEXAMPLE.NET$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+Krb5Keytab\s\/tmp\/keytab5$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbLocalUserMapping\soff$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbServiceName\sHTTP$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbSaveCredentials\soff$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-auth_kerb').with(
+        :content => /^\s+KrbVerifyKDC\son$/)}
+      it { is_expected.to contain_concat__fragment('rspec.example.com-limits').with(
+        :content => /^\s+LimitRequestFieldSize\s54321$/)}
     end
+    context 'vhost with multiple ip addresses' do
+      let :params do
+        {
+          'port'                        => '80',
+          'ip'                          => ['127.0.0.1','::1'],
+          'ip_based'                    => true,
+          'servername'                  => 'example.com',
+          'docroot'                     => '/var/www/html',
+          'add_listen'                  => true,
+          'ensure'                      => 'present'
+        }
+      end
+      let :facts do
+        {
+          :osfamily               => 'RedHat',
+          :operatingsystemrelease => '7',
+          :concat_basedir         => '/dne',
+          :operatingsystem        => 'RedHat',
+          :id                     => 'root',
+          :kernel                 => 'Linux',
+          :path                   => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          :kernelversion          => '3.6.2',
+          :is_pe                  => false,
+        }
+      end
+
+      it { is_expected.to compile }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-apache-header').with(
+        :content => /[.\/m]*<VirtualHost 127.0.0.1:80 \[::1\]:80>[.\/m]*$/ ) }
+      it { is_expected.to contain_concat__fragment('Listen 127.0.0.1:80') }
+      it { is_expected.to contain_concat__fragment('Listen [::1]:80') }
+      it { is_expected.to_not contain_concat__fragment('NameVirtualHost 127.0.0.1:80') }
+      it { is_expected.to_not contain_concat__fragment('NameVirtualHost [::1]:80') }
+    end
+
+    context 'vhost with ipv6 address' do
+      let :params do
+        {
+          'port'                        => '80',
+          'ip'                          => '::1',
+          'ip_based'                    => true,
+          'servername'                  => 'example.com',
+          'docroot'                     => '/var/www/html',
+          'add_listen'                  => true,
+          'ensure'                      => 'present'
+        }
+      end
+      let :facts do
+        {
+          :osfamily               => 'RedHat',
+          :operatingsystemrelease => '7',
+          :concat_basedir         => '/dne',
+          :operatingsystem        => 'RedHat',
+          :id                     => 'root',
+          :kernel                 => 'Linux',
+          :path                   => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          :kernelversion          => '3.6.2',
+          :is_pe                  => false,
+        }
+      end
+
+      it { is_expected.to compile }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-apache-header').with(
+        :content => /[.\/m]*<VirtualHost \[::1\]:80>[.\/m]*$/ ) }
+      it { is_expected.to contain_concat__fragment('Listen [::1]:80') }
+      it { is_expected.to_not contain_concat__fragment('NameVirtualHost [::1]:80') }
+    end
+
     context 'set only aliases' do
       let :params do
         {
@@ -449,12 +565,13 @@ describe 'apache::vhost', :type => :define do
             {
               'path'     => '.*',
               'url'      => 'http://backend-a/',
+              'params'   => { 'timeout' => 300 },
             }
           ],
         }
       end
       it { is_expected.to contain_concat__fragment('rspec.example.com-proxy').with_content(
-              /ProxyPassMatch .* http:\/\/backend-a\//).with_content(/## Proxy rules/) }
+              /ProxyPassMatch .* http:\/\/backend-a\/ timeout=300/).with_content(/## Proxy rules/) }
     end
     context 'proxy_dest_match' do
       let :params do
@@ -567,6 +684,7 @@ describe 'apache::vhost', :type => :define do
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-serveralias') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-setenv') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-ssl') }
+      it { is_expected.to_not contain_concat__fragment('rspec.example.com-sslproxy') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-suphp') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-php_admin') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-header') }
@@ -576,7 +694,30 @@ describe 'apache::vhost', :type => :define do
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-fastcgi') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-suexec') }
       it { is_expected.to_not contain_concat__fragment('rspec.example.com-charsets') }
+      it { is_expected.to_not contain_concat__fragment('rspec.example.com-limits') }
       it { is_expected.to contain_concat__fragment('rspec.example.com-file_footer') }
+    end
+    context 'when not setting nor managing the docroot' do
+      let :params do
+        {
+          'docroot'                     => false,
+          'manage_docroot'              => false,
+        }
+      end
+      it { is_expected.to compile }
+      it { is_expected.not_to contain_concat__fragment('rspec.example.com-docroot') }
+    end
+    context 'ssl_proxyengine without ssl' do
+      let :params do
+        {
+          'docroot'         => '/rspec/docroot',
+          'ssl'             => false,
+          'ssl_proxyengine' => true,
+        }
+      end
+      it { is_expected.to compile }
+      it { is_expected.not_to contain_concat__fragment('rspec.example.com-ssl') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-sslproxy') }
     end
   end
   describe 'access logs' do
@@ -859,6 +1000,73 @@ describe 'apache::vhost', :type => :define do
       end
       let :facts do default_facts end
       it { expect { is_expected.to compile }.to raise_error }
+    end
+    context 'default of require all granted' do
+      let :params do
+        {
+          'docroot'         => '/var/www/foo',
+          'directories'     => [
+            {
+              'path'     => '/var/www/foo/files',
+              'provider' => 'files',
+            },
+          ],
+
+        }
+      end
+      let :facts do
+        {
+          :osfamily               => 'RedHat',
+          :operatingsystemrelease => '7',
+          :concat_basedir         => '/dne',
+          :operatingsystem        => 'RedHat',
+          :id                     => 'root',
+          :kernel                 => 'Linux',
+          :path                   => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          :kernelversion          => '3.19.2',
+          :is_pe                  => false,
+        }
+      end
+
+      it { is_expected.to compile }
+      it { is_expected.to contain_file('25-rspec.example.com.conf') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-directories') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-directories').with(
+        :content => /^\s+Require all granted$/ ) }
+    end
+    context 'require unmanaged' do
+      let :params do
+        {
+          'docroot'         => '/var/www/foo',
+          'directories'     => [
+            {
+              'path'     => '/var/www/foo',
+              'require'  => 'unmanaged',
+            },
+          ],
+
+        }
+      end
+      let :facts do
+        {
+          :osfamily               => 'RedHat',
+          :operatingsystemrelease => '7',
+          :concat_basedir         => '/dne',
+          :operatingsystem        => 'RedHat',
+          :id                     => 'root',
+          :kernel                 => 'Linux',
+          :path                   => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          :kernelversion          => '3.19.2',
+          :is_pe                  => false,
+        }
+      end
+
+      it { is_expected.to compile }
+      it { is_expected.to contain_file('25-rspec.example.com.conf') }
+      it { is_expected.to contain_concat__fragment('rspec.example.com-directories') }
+      it { is_expected.to_not contain_concat__fragment('rspec.example.com-directories').with(
+        :content => /^\s+Require all granted$/ )
+      }
     end
   end
 end

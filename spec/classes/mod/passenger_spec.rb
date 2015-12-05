@@ -14,7 +14,6 @@ describe 'apache::mod::passenger', :type => :class do
         :lsbdistcodename        => 'squeeze',
         :operatingsystem        => 'Debian',
         :id                     => 'root',
-        :kernel                 => 'Linux',
         :path                   => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
         :is_pe                  => false,
       }
@@ -117,6 +116,12 @@ describe 'apache::mod::passenger', :type => :class do
         { :passenger_app_env => 'foo' }
       end
       it { is_expected.to contain_file('passenger.conf').with_content(/^  PassengerAppEnv foo$/) }
+    end
+    describe "with passenger_log_file => '/var/log/apache2/passenger.log'" do
+      let :params do
+        { :passenger_log_file => '/var/log/apache2/passenger.log' }
+      end
+      it { is_expected.to contain_file('passenger.conf').with_content(%r{^  PassengerLogFile /var/log/apache2/passenger.log$}) }
     end
     describe "with mod_path => '/usr/lib/foo/mod_foo.so'" do
       let :params do
